@@ -341,3 +341,4 @@ healthchecksdb
 /BimlTest.sln
 /RemoveSSISDesign/Properties/launchSettings.json
 *.sln
+/SSISTest

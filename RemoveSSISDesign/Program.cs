@@ -12,15 +12,22 @@ namespace RemoveDesign
         static int Main(string[] args)
         {
             string DTS = "www.microsoft.com/SqlServer/Dts";
+            List<KeyValuePair<string,string>> RemoveAttributes = new List<KeyValuePair<string,string>>
+            {
+                new KeyValuePair<string, string>("VersionBuild","1"),
+                new KeyValuePair<string, string>("CreationDate",new DateTime(1970,1,1).ToShortDateString()),
+                new KeyValuePair<string, string>("CreatorName",""),
+                new KeyValuePair<string, string>("CreatorComputerName",""),
+                new KeyValuePair<string, string>("VersionGUID",Guid.Empty.ToString())
+            };
+
             if (args.Length % 2 != 0)
             {
                 TextWriter ew = Console.Error;
                 ew.WriteLine("You have to provide a property for every argument");
                 return 2;
             }
-
             List<KeyValuePair<string, string>> Arguments = new List<KeyValuePair<string, string>>();
-            
             for (int i = 0; i < args.Length; i += 2)
             {
                 var NewArg = new KeyValuePair<string, string>(args[i].Substring(1, args[i].Length - 1).ToLower(), args[i + 1]);
@@ -30,37 +37,48 @@ namespace RemoveDesign
             {
                 Arguments.Add(new KeyValuePair<string, string>("folder", Directory.GetCurrentDirectory()));
             }
+            string folder = Arguments.Single(p => p.Key == "folder").Value;
+            if (!Directory.Exists(Arguments.First(p => p.Key == "folder").Value))
+            {
+                Console.WriteLine("Invalid directory: " + folder);
+                return 1;
+            }
+            Console.WriteLine("Watching folder " + folder + " for changes. Ctrl + C to exit");
 
-            Console.WriteLine("Watching folder " + Arguments.Single(p => p.Key == "folder").Value + " for changes. Ctrl + C to exit");
+            bool running = false;
+            if(Arguments.Any(p => p.Key.ToLower() == "watch"))
+            {
+                running = Arguments.Single(p => p.Key == "watch").Value.ToLower() == "true" ? true : false;
+            }
             
-
-            bool running = true;
+            /* Process files */
             do
             {
 
-                var Files = Directory.GetFiles(Arguments.First(p => p.Key == "folder").Value, "*.dtsx");
+                var Files = Directory.GetFiles(folder, "*.dtsx");
 
                 foreach (var File in Files)
                 {
                     bool Modified = false;
                     XmlDocument doc = new XmlDocument();
-
                     doc.Load(File);
-                    var Executable = doc.GetElementsByTagName("Executable", DTS).Item(0);
-                    if(Executable.Attributes["VersionGUID", DTS] != null)
-                    {
-                        Executable.Attributes.Remove(Executable.Attributes["VersionGUID", DTS]);
-                        Modified = true;
-                    }
-                    var Attributes = Executable.Attributes;
 
-                    foreach (XmlAttribute Attribute in Attributes)
+                    /* Remove attributes from Executable */ 
+                    var Executable = doc.GetElementsByTagName("Executable", DTS).Item(0);
+                    foreach(var RemoveAttribute in RemoveAttributes)
                     {
-                        if (Attribute.Name == "DTS:VersionBuild" && Attribute.Value != "1") { Attribute.Value = "1"; Modified = true; }
-                        if (Attribute.Name == "DTS:CreationDate" && Attribute.Value != "2099-01-01") { Attribute.Value = "2099-01-01";Modified = true; }
-                        if (Attribute.Name == "DTS:CreatorName" && Attribute.Value != "") { Attribute.Value = ""; Modified = true; }
-                        if (Attribute.Name == "DTS:CreatorComputerName" && Attribute.Value != "") { Attribute.Value = ""; Modified = true; }
+                        /* If the attribute doesn't exists... */
+                        var Attribute = Executable.Attributes[RemoveAttribute.Key, DTS];
+                        if (Attribute == null) continue;
+
+                        if (Attribute.Value != RemoveAttribute.Value)
+                        {
+                            Executable.Attributes[RemoveAttribute.Key, DTS].Value = RemoveAttribute.Value;
+                            Modified = true;
+                        }
                     }
+                    
+                    /* Remove design */
                     var Design = doc.GetElementsByTagName("DesignTimeProperties", DTS);
                     if (Design.Count > 0)
                     {
@@ -78,7 +96,6 @@ namespace RemoveDesign
                         }
                     }
                 }
-
                 Thread.Sleep(3000);
             } while (running);
             return 0;
